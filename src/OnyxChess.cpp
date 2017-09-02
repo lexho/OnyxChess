@@ -10,10 +10,49 @@
 #include <array>
 #include <iostream>
 #include <limits>
-#include "bitboard.h"
-#include "lookuptables.h"
+#include <chrono>
+#include <random>
+#include "board/bitboard.h"
+#include "board/lookuptables.h"
 
 using namespace std;
+
+random_device rn;
+mt19937 rnd_engine(rn());
+
+void printPossibleMovesWithTime(MoveList possible) {
+	// Measure time of possible moves
+	chrono::time_point<chrono::steady_clock> start, stop;
+	start = chrono::steady_clock::now();
+
+	stop = chrono::steady_clock::now();
+	auto dur = stop-start;
+	chrono::milliseconds mil = chrono::duration_cast<chrono::milliseconds>(dur);
+	if(mil.count() == 0)
+		cout << possible.size() << " moves in " << dur.count() << " ns" << endl;
+	else
+		cout << possible.size() << " moves in " << mil.count() << " ms" << endl;
+
+	// print a list of possible moves
+	for ( Move x  : possible ) std::cout << x << ' ';
+	std::cout <<  std::endl;
+	cout << endl;
+}
+
+void makeRandomMove(BitBoard& board) {
+	Move m;
+	MoveList possible = board.getPossibleMoves();
+
+	// make random move
+	uniform_int_distribution<int> rand(0, possible.size() - 1);
+	m = possible.at(rand(rnd_engine));
+	string color;
+	if(board.isWhiteMove()) color = "white";
+	else color = "black";
+	cout << color << " makes move " << m << "..." << endl;
+	board.makeMove(m);
+	board.print();
+}
 
 int main() {
 
@@ -30,15 +69,19 @@ int main() {
 	//cout << "Datatype U64 has " << numeric_limits<U64>::digits << " Bits "<< endl << endl;
 
 	LookUpTables::init();
-	BitBoard::initRookMagics();
+	BitBoard::init();
 	BitBoard bitboard;
+	cout << bitboard.developerInfo << endl;
 	bitboard.print();
 
-	// Get possible moves and print them
 	MoveList possible = bitboard.getPossibleMoves();
-	cout << "Nr of possible moves: " << possible.size() << endl;
-	for ( Move x  : possible ) std::cout << x << ' ';
-	std::cout <<  std::endl;
+	printPossibleMovesWithTime(possible);
+
+	// make white's first move
+	makeRandomMove(bitboard);
+
+	// make black's first move
+	makeRandomMove(bitboard);
 
 	return 0;
 }

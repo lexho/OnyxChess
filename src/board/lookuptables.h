@@ -6,7 +6,7 @@
  */
 
 #include <array>
-#include "datatypes.h"
+#include "../datatypes.h"
 
 #ifndef LOOKUPTABLES_H_
 #define LOOKUPTABLES_H_
