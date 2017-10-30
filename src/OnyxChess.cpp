@@ -14,6 +14,7 @@
 #include <random>
 #include "board/bitboard.h"
 #include "board/lookuptables.h"
+#include "onyxbot.h"
 
 using namespace std;
 
@@ -80,8 +81,19 @@ int main() {
 	// make white's first move
 	makeRandomMove(bitboard);
 
+	possible = bitboard.getPossibleMoves();
+	printPossibleMovesWithTime(possible);
+
 	// make black's first move
 	makeRandomMove(bitboard);
+
+	possible = bitboard.getPossibleMoves();
+	printPossibleMovesWithTime(possible);
+
+	cout << "create new bot" << endl;
+	OnyxBot bot;
+	Move nextMove = bot.getNextMove();
+	cout << "next move: " << nextMove << ", score: " << bot.getNextMoveScore() << endl;
 
 	return 0;
 }

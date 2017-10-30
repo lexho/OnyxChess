@@ -7,22 +7,21 @@
 #include "bitboard.h"
 #include "lookuptables.h"
 #include "move.h"
+#include "exceptions/BitBoardError.cpp"
 #include <iostream>
 #include <sstream>
 #include <bitset>
 #include <deque>
 #include <limits>
 #include <vector>
+#include <ctype.h>
+#include "../Utils.h"
 
 array<int, 13> BitBoard::pieceValue = {0, PAWN_V, KNIGHT_V, BISHOP_V, ROOK_V, QUEEN_V, KING_V, PAWN_V, KNIGHT_V, BISHOP_V, ROOK_V, QUEEN_V, KING_V};
 int BitBoard::nPieceTypes = 13;
 
 
-string BitBoard::developerInfo = "implemented moves\nrook [x], bishop [], knight [], queen [], king [x], pawn [*]";
-
-void BitBoard::init() {
-	  initRookMagics();
-}
+string BitBoard::developerInfo = "implemented moves\nrook [x], bishop [x], knight [x], queen [], king [x], pawn [*]";
 
 BitBoard::BitBoard() {
 	static_assert((numeric_limits<U64>::digits == 64), "!!! U64 does not have 64 Bits !!!");
@@ -87,6 +86,312 @@ BitBoard::BitBoard(const BitBoard& board) {
 
 	wMtrl = board.wMtrl;
 	bMtrl = board.bMtrl;
+}
+
+// convert char representation of piece to numeric board representation used internally
+int BitBoard::charPieceToPieceType(int p) {
+	int piece;
+
+	switch (p) {
+	case 'K':
+		piece = WKING;
+		break;
+	case 'R':
+		piece = WROOK;
+		break;
+	case 'N':
+		piece = WKNIGHT;
+		break;
+	case 'B':
+		piece = WBISHOP;
+		break;
+	case 'Q':
+		piece = WQUEEN;
+		break;
+	case 'P':
+		piece = WPAWN;
+		break;
+	case 'k':
+		piece = BKING;
+		break;
+	case 'r':
+		piece = BROOK;
+		break;
+	case 'n':
+		piece = BKNIGHT;
+		break;
+	case 'b':
+		piece = BBISHOP;
+		break;
+	case 'q':
+		piece = BQUEEN;
+		break;
+	case 'p':
+		piece = BPAWN;
+		break;
+	default:
+		piece = EMPTY;
+	}
+	return piece;
+}
+
+BitBoard::BitBoard(FEN fen) {
+	// TODO implement PositionBB byFen-constructor
+	whiteMove = fen.getActiveColor() == 'w' ? true : false;
+
+	//pieceTypeBB = new U64[nPieceTypes];
+
+	/* Initialize Bitboards */
+	for (int i = 0; i < nPieceTypes; i++) {
+		 pieceTypeBB[i] = 0L;
+	}
+	whiteBB = blackBB = 0L;
+
+	//squares = new int[64];
+
+	// rnbqkbnr/pppp1ppp/8/8/8/8/PPPPQPPP/RNB1KBNR
+	string piecestr = fen.getPiecePlacement();
+	vector<string> rows = Utils::splitString(piecestr, '/');
+
+	//pieces = new PieceList(this);
+	for(int y = 7; y >= 0; y--) {
+		string row = rows.at(7 - y);
+		for(int x = 0, i = 0; x < 8; x++, i++) {
+			if(i == row.length()) break;
+			char p = row.at(i);
+			if(isdigit(p)) {
+				x += (p - 1) - '0'; // get numeric value
+				continue;
+			}
+			int square = getSquare(x, y);
+			int piece = charPieceToPieceType(p);
+			//System.out.println("set " + piece + " to " + x + " / " + y);
+			//System.out.println("set " + p + " to " + x + " / " + y);
+			setPiece(square, piece);
+			if(piece < 7)
+				wMtrl += getPieceValue(piece);
+			else
+				bMtrl += getPieceValue(piece);
+		}
+	}
+}
+
+void BitBoard::init() {
+	  initRookMagics();
+	  initBishopMagics();
+}
+
+//TODO is compute_king incomplete?
+U64 BitBoard::compute_king(U64 king_loc, U64 own_side)
+{
+	/* we can ignore the rank clipping since the overflow/underflow with
+		respect to rank simply vanishes. We only care about the file
+		overflow/underflow. */
+
+	U64 king_clip_file_h = king_loc & LookUpTables::clearFile[FILE_H];
+	U64 king_clip_file_a = king_loc & LookUpTables::clearFile[FILE_A];
+
+	/* remember the representation of the board in relation to the bitindex
+		when looking at these shifts.... */
+	U64 spot_1 = king_clip_file_h << 7;
+	U64 spot_2 = king_loc << 8;
+	U64 spot_3 = king_clip_file_h << 9;
+	U64 spot_4 = king_clip_file_h << 1;
+
+	U64 spot_5 = king_clip_file_a >> 7;
+	U64 spot_6 = king_loc >> 8;
+	U64 spot_7 = king_clip_file_a >> 9;
+	U64 spot_8 = king_clip_file_a >> 1;
+
+	U64 king_moves = spot_1 | spot_2 | spot_3 | spot_4 | spot_5 | spot_6 |
+						spot_7 | spot_8;
+
+	U64 KingValid = king_moves & ~own_side;
+
+	/* compute only the places where the king can move and attack. The caller
+		will interpret this as a white or black king. */
+	return KingValid;
+}
+
+U64 compute_knight(U64 knight_loc, U64 own_side) {
+
+}
+
+U64 compute_white_pawns(U64 white_pawn_loc, U64 all_pieces,
+				U64 all_black_pieces) {
+
+}
+
+U64 compute_black_pawns(U64 black_pawn_loc, U64 all_pieces,
+				U64 all_white_pieces) {
+
+}
+
+U64 BitBoard::whitePiecesValid(const BitBoard& board) {
+	/*cout << "BitBoard::whitePiecesValid" << endl;
+	whiteKingValid(board);
+	cout << "king" << endl;
+	whiteKnightsValid(board);
+	cout << "knight" << endl;
+	whiteBishopsValid(board);
+	cout << "bishop" << endl;
+	whiteRooksValid(board);
+	cout << "rooks" << endl;*/
+	return whiteKingValid(board) | whiteKnightsValid(board) |
+	    			whiteBishopsValid(board) | whiteRooksValid(board) | whiteQueensValid(board) | whitePawnsValid(board);
+}
+
+U64 BitBoard::blackPiecesValid(const BitBoard& board) {
+	//cout << "BitBoard::blackPiecesValid" << endl;
+	return blackKingValid(board) | blackKnightsValid(board) |
+	    			blackBishopsValid(board) | blackRooksValid(board) | blackQueensValid(board) | blackPawnsValid(board);
+}
+
+U64 BitBoard::whiteKingValid(const BitBoard& board) {
+	return compute_king(board.pieceTypeBB[WKING], board.whiteBB);
+}
+
+U64 BitBoard::blackKingValid(const BitBoard& board) {
+	return compute_king(board.pieceTypeBB[BKING], board.blackBB);
+}
+
+U64 BitBoard::whiteKnightsValid(const BitBoard& board) {
+	return compute_knight(board.pieceTypeBB[board.WKNIGHT], board.whiteBB);
+}
+
+U64 BitBoard::blackKnightsValid(const BitBoard& board) {
+	return compute_knight(board.pieceTypeBB[board.BKNIGHT], board.blackBB);
+}
+
+U64 BitBoard::whitePawnsValid(const BitBoard& board) {
+	return compute_white_pawns(board.pieceTypeBB[board.WPAWN], board.allBB, board.blackBB);
+}
+
+U64 BitBoard::blackPawnsValid(const BitBoard& board) {
+	return compute_black_pawns(board.pieceTypeBB[board.BPAWN], board.allBB, board.whiteBB);
+}
+
+U64 BitBoard::whiteBishopsValid(const BitBoard& board) {
+	//cout << "BitBoard::whiteBishopsValid..." << endl;
+    U64 squares = board.pieceTypeBB[board.WBISHOP];
+    U64 m = 0x0ULL;
+	while (squares != 0) {
+        int sq = numberOfTrailingZeros(squares);
+        m |= bishopAttacks(sq, board.allBB) & ~board.whiteBB;
+        /*while (m != 0) {
+            int sq1 = numberOfTrailingZeros(m);
+            System.out.println(sq + " " + sq1);
+            //setMove(moveList, sq, sq1, board.EMPTY);
+            m &= (m - 1);
+        }*/
+
+        squares &= squares-1;
+    }
+	return m;
+}
+
+U64 BitBoard::blackBishopsValid(const BitBoard& board) {
+    U64 squares = board.pieceTypeBB[board.BBISHOP];
+    U64 m = 0x0L;
+	while (squares != 0) {
+        int sq = numberOfTrailingZeros(squares);
+        m |= bishopAttacks(sq, board.allBB) & ~board.blackBB;
+
+        /*while (m != 0) {
+            int sq1 = numberOfTrailingZeros(m);
+            System.out.println(sq + " " + sq1);
+            //setMove(moveList, sq, sq1, board.EMPTY);
+            m &= (m - 1);
+        }*/
+
+        squares &= squares-1;
+    }
+	return m;
+}
+
+U64 BitBoard::whiteRooksValid(const BitBoard& board) {
+	U64 squares = board.pieceTypeBB[board.WROOK];
+    U64 m = 0x0L;
+
+	squares = board.pieceTypeBB[board.WROOK];
+	while (squares != 0) {
+        int sq = numberOfTrailingZeros(squares);
+        m |= rookAttacks(sq, board.allBB) & ~board.whiteBB;
+        squares &= squares-1;
+    }
+
+	//System.out.println(BitBoardUtils.bitboardToString(m, '1'));
+
+	return m;
+}
+
+U64 BitBoard::blackRooksValid(const BitBoard& board) {
+	U64 squares = board.pieceTypeBB[board.BROOK];
+    U64 m = 0x0L;
+
+	squares = board.pieceTypeBB[board.BROOK];
+	while (squares != 0) {
+        int sq = numberOfTrailingZeros(squares);
+        m |= rookAttacks(sq, board.allBB) & ~board.blackBB;
+        squares &= squares-1;
+    }
+
+	//System.out.println(BitBoardUtils.bitboardToString(m, '1'));
+
+	return m;
+}
+
+U64 BitBoard::whiteQueensValid(const BitBoard& board) {
+	U64 squares = board.pieceTypeBB[board.WQUEEN];
+    U64 m = 0x0L;
+	while (squares != 0) {
+        int sq = numberOfTrailingZeros(squares);
+        m |= bishopAttacks(sq, board.allBB) & ~board.whiteBB;
+        squares &= squares-1;
+    }
+
+	squares = board.pieceTypeBB[board.WQUEEN];
+	while (squares != 0) {
+        int sq = numberOfTrailingZeros(squares);
+        m |= rookAttacks(sq, board.allBB) & ~board.whiteBB;
+        squares &= squares-1;
+    }
+
+	//System.out.println(BitBoardUtils.bitboardToString(m, '1'));
+
+	return m;
+}
+
+U64 BitBoard::blackQueensValid(const BitBoard& board) {
+	U64 squares = board.pieceTypeBB[board.BQUEEN];
+    U64 m = 0x0L;
+	while (squares != 0) {
+        int sq = numberOfTrailingZeros(squares);
+        m |= bishopAttacks(sq, board.allBB) & ~board.blackBB;
+        squares &= squares-1;
+    }
+
+	squares = board.pieceTypeBB[board.BQUEEN];
+	while (squares != 0) {
+        int sq = numberOfTrailingZeros(squares);
+        m |= rookAttacks(sq, board.allBB) & ~board.blackBB;
+        squares &= squares-1;
+    }
+
+	//System.out.println(BitBoardUtils.bitboardToString(m, '1'));
+
+	return m;
+}
+
+bool BitBoard::isRunning() {
+	U64 validMoves(0LL);
+	if(isWhiteMove()) {
+		validMoves = whitePiecesValid(*this);
+	} else
+		validMoves = blackPiecesValid(*this);
+
+	if(validMoves == 0LL) return false;
+	else return true;
 }
 
 /** Creates a 8x8 Board from BitBoards */
@@ -174,7 +479,11 @@ void BitBoard::printBitBoards() {
 		/*for(int p = 0; p < 13; p++) {
 			printSingleBB(p);
 		}*/
-	}
+}
+
+array<U64, 13> BitBoard::getPieceTypeBB() const {
+	return pieceTypeBB;
+}
 
 void BitBoard::print() {
 	/*cout << "Bitboards" << endl;
@@ -272,7 +581,7 @@ int BitBoard::numberOfTrailingZeros(U64 mask) {
 	return trailingZ[(int)(((mask & -mask) * 0x07EDD5E59A4E28C2L) >> 58)];
 }
 
-void BitBoard::addMovesByMask(MoveList& moveList, int sq0, U64 mask) {
+bool BitBoard::addMovesByMask(MoveList& moveList, int sq0, U64 mask) {
     while (mask != 0) {
     	//cout << "mask: " << std::bitset<64>(mask) << endl;
     	//cout << moveList.size() << endl;
@@ -281,10 +590,68 @@ void BitBoard::addMovesByMask(MoveList& moveList, int sq0, U64 mask) {
         moveList.push_back(Move(sq0, sq));
         mask &= (mask - 1);
     }
+    //TODO BitBoard::addMovesByMask always returns false
+    return false;
+}
+
+int BitBoard::getMoveNr() {
+	return halfMoveClock;
 }
 
 bool BitBoard::isWhiteMove() {
 	return whiteMove;
+}
+
+void BitBoard::setWhiteMove(bool whiteMove) {
+	BitBoard::whiteMove = whiteMove;
+}
+
+/** Get the square index with the king on */
+int BitBoard::getKingSq(bool isWhite) {
+	if(isWhite)
+    	for(int i = 0; i < squares.size(); i++) {
+    		if(squares[i] == WKING) return i;
+    	}
+	else
+    	for(int i = 0; i < squares.size(); i++) {
+    		if(squares[i] == BKING) return i;
+    	}
+	return -1;
+}
+
+bool BitBoard::isInCheck(bool isWhite) {
+	BitBoard temp(*this);
+	int king;
+
+	temp.setWhiteMove(!isWhite);
+
+	// Is there a king on the board?
+	try {
+	king = temp.getKingSq(isWhite);
+	} catch (exception e) {
+		return true; //TODO handle no king error
+	}
+
+	//System.out.println("possible moves: " + temp.getPossibleMoves());
+
+	/* Is any of the opponent's pieces threatening the king? */
+	for(Move m : temp.getPseudoLegalMoves()) {
+		//System.out.println(m + " " + m.getTarget8x8Index() + " =? " + king);
+		if(m.getTarget8x8Index() == king) {
+			//System.out.println(m + " is threatening the king");
+			return true;
+		}
+	}
+
+	return false;
+}
+
+int BitBoard::getWhiteMaterial() {
+	return wMtrl;
+}
+
+int BitBoard::getBlackMaterial() {
+	return bMtrl;
 }
 
 bool BitBoard::addPawnMovesByMask(MoveList& moveList, BitBoard pos, U64 mask,
@@ -355,6 +722,15 @@ U64 BitBoard::addRookRays(int x, int y, U64 occupied, bool inner) {
 		return mask;
 }
 
+U64 BitBoard::addBishopRays(int x, int y, U64 occupied, bool inner) {
+	U64 mask = 0;
+    mask = addRay(mask, x, y,  1,  1, occupied, inner);
+    mask = addRay(mask, x, y, -1, -1, occupied, inner);
+    mask = addRay(mask, x, y,  1, -1, occupied, inner);
+    mask = addRay(mask, x, y, -1,  1, occupied, inner);
+    return mask;
+}
+
 U64 BitBoard::createPattern(int i, U64 mask) {
 	U64 ret = 0ULL;
 	for (int j = 0; ; j++) {
@@ -389,6 +765,17 @@ int BitBoard::rBits[] = { 12, 11, 11, 11, 11, 11, 11, 12,
         10,  9,  9,  9,  9,  9, 10, 10,
         11, 10, 10, 10, 10, 11, 10, 11 };
 
+array<vector<U64>, 64> BitBoard::bTables{};
+array<U64, 64> BitBoard::bMasks;
+int BitBoard::bBits[] = { 5, 4, 5, 5, 5, 5, 4, 5,
+	            4, 4, 5, 5, 5, 5, 4, 4,
+	            4, 4, 7, 7, 7, 7, 4, 4,
+	            5, 5, 7, 9, 9, 7, 5, 5,
+	            5, 5, 7, 9, 9, 7, 5, 5,
+	            4, 4, 7, 7, 7, 7, 4, 4,
+	            4, 4, 5, 5, 5, 5, 4, 4,
+	            5, 4, 5, 5, 5, 5, 4, 5 };
+
 void BitBoard::initRookMagics() { // Rook magics
 	//rTables = new U64[64][];
 	//rMasks = new U64[64];
@@ -416,12 +803,43 @@ void BitBoard::initRookMagics() { // Rook magics
 	}
 }
 
+void BitBoard::initBishopMagics() {
+    for (int sq = 0; sq < 64; sq++) {
+        int x = getX(sq);
+        int y = getY(sq);
+        bMasks[sq] = addBishopRays(x, y, 0L, true);
+        int tableSize = 1 << bBits[sq];
+        vector<U64> table (tableSize, -1);
+        int nPatterns = 1 << std::bitset<64>(bMasks[sq]).count();
+        for (int i = 0; i < nPatterns; i++) {
+        	U64 p = createPattern(i, bMasks[sq]);
+            int entry = (int)((p * LookUpTables::bMagics[sq]) >> (64 - bBits[sq]));
+            U64 atks = addBishopRays(x, y, p, false);
+            if (table[entry] == -1) {
+                table[entry] = atks;
+            } else if (table[entry] != atks) {
+            	throw runtime_error("Error: Something went wrong in initBishopMagics()");
+            }
+        }
+        bTables[sq] = table;
+    }
+}
+
 U64 BitBoard::rookAttacks(int sq, U64 occupied) {
 		/* cout << "occupied: " << std::bitset<64>(occupied) << endl;
 		cout << "rMask   : " << std::bitset<64>(rMasks[sq]) << endl;
 		cout << "rMagic  : " << std::bitset<64>(LookUpTables::rMagics[sq]) << endl;
 		cout << "rBit    : " << std::bitset<64>(rBits[sq]) << endl; */
 		return rTables[sq][(int)(((occupied & rMasks[sq]) * LookUpTables::rMagics[sq]) >> (64 - rBits[sq]))];
+}
+
+U64 BitBoard::bishopAttacks(int sq, U64 occupied) {
+	/*cout << "bMask: " << to_string(bMasks[sq]) << endl;
+	cout << "bMagic: " << to_string(LookUpTables::bMagics[sq]) << endl;
+	cout << "bBits: " << to_string(bBits[sq]) << endl;
+	cout << "index: " << to_string((int)(((occupied & bMasks[sq]) * LookUpTables::bMagics[sq]) >> (64 - bBits[sq]))) << endl;
+	cout << bTables[sq][(int)(((occupied & bMasks[sq]) * LookUpTables::bMagics[sq]) >> (64 - bBits[sq]))] << endl;*/
+	return bTables[sq][(int)(((occupied & bMasks[sq]) * LookUpTables::bMagics[sq]) >> (64 - bBits[sq]))];
 }
 
 /** Get the white rooks possible moves */
@@ -502,6 +920,20 @@ U64 BitBoard::compute_king_incomplete(U64 king_loc, U64 own_side) {
 	return KingValid;
 }
 
+U64 BitBoard::compute_white_pawns(U64 white_pawn_loc, U64 all_pieces,
+		U64 all_black_pieces) {
+	//TODO implement in BitBoard
+}
+
+U64 BitBoard::compute_black_pawns(U64 black_pawn_loc, U64 all_pieces,
+				U64 all_white_pieces) {
+	//TODO implement in BitBoard
+}
+
+U64 BitBoard::compute_knight(U64 knight_loc, U64 own_side) {
+	//TODO implement in BitBoard
+}
+
 MoveList BitBoard::whitePawnMoves(BitBoard pos, U64 pawnsBB, U64 occupied, U64 blackBB) {
 	MoveList possible;
 
@@ -573,6 +1005,80 @@ MoveList BitBoard::blackKingMoves() {
     return possible;
 }
 
+
+MoveList BitBoard::bishopsMoves(U64 squares, U64 allBB, U64 playerBB) {
+    U64 m = 0x0ULL;
+    MoveList possible;
+
+	while (squares != 0) {
+        int sq = numberOfTrailingZeros(squares);
+        m |= bishopAttacks(sq, allBB) & ~playerBB;
+
+        /* add move to movelist */
+        while (m != 0) {
+            int sq1 = numberOfTrailingZeros(m);
+            //System.out.println(sq + " " + sq1);
+            //setMove(moveList, sq, sq1, Piece.EMPTY);
+            possible.push_back(Move(sq, sq1));
+            m &= (m - 1);
+        }
+
+        squares &= squares-1;
+    }
+	return possible;
+}
+
+MoveList BitBoard::whiteKnightsMoves(U64 squares, U64 whiteBB) {
+	MoveList possible;
+
+    while (squares != 0) {
+        int sq = numberOfTrailingZeros(squares);
+        U64 m = LookUpTables::knightAttacks[sq] & ~whiteBB;
+        //TODO BitBoard::addMovesByMask always returns false
+        if (addMovesByMask(possible, sq, m)) return possible;
+        squares &= squares-1;
+    }
+
+	return possible;
+}
+
+MoveList BitBoard::blackKnightsMoves(U64 squares, U64 blackBB) {
+	MoveList possible;
+
+    while (squares != 0) {
+        int sq = numberOfTrailingZeros(squares);
+        U64 m = LookUpTables::knightAttacks[sq] & ~blackBB;
+        //TODO BitBoard::addMovesByMask always returns false
+        if (addMovesByMask(possible, sq, m)) return possible;
+        squares &= squares-1;
+    }
+
+	return possible;
+}
+
+MoveList BitBoard::queenMoves(U64 squares, U64 allBB, U64 playerBB) {
+	U64 m = 0x0ULL;
+	MoveList possible;
+
+	while (squares != 0) {
+		int sq = numberOfTrailingZeros(squares);
+		m |= rookAttacks(sq, allBB) & ~playerBB;
+		m |= bishopAttacks(sq, allBB) & ~playerBB;
+
+		/* add move to movelist */
+		while (m != 0) {
+			int sq1 = numberOfTrailingZeros(m);
+			//System.out.println(sq + " " + sq1);
+			//setMove(moveList, sq, sq1, Piece.EMPTY);
+			possible.push_back(Move(sq, sq1));
+			m &= (m - 1);
+		}
+
+		squares &= squares-1;
+	}
+	return possible;
+}
+
 MoveList BitBoard::getPseudoLegalMoves() {
 	// Update Bitboards
 	BitBoard::createWhiteBB();
@@ -585,6 +1091,7 @@ MoveList BitBoard::getPseudoLegalMoves() {
 	MoveList possible;
 	MoveList moves;
 
+	// TODO add rest of the moves
 	if(whiteMove) {
 		moves = whiteRooksMoves(pieceTypeBB[WROOK], allBB, whiteBB);
 		possible.insert(end(possible), begin(moves), end(moves));
@@ -594,14 +1101,16 @@ MoveList BitBoard::getPseudoLegalMoves() {
 
 		moves = whitePawnMoves(*this, pieceTypeBB[WPAWN], occupied, blackBB);
 		possible.insert(end(possible), begin(moves), end(moves));
-		/*moves = whiteBishopsMoves(pieceTypeBB[WBISHOP], allBB, whiteBB);
+
+		moves = bishopsMoves(pieceTypeBB[WBISHOP], allBB, whiteBB);
 		possible.insert(end(possible), begin(moves), end(moves));
-		moves = whiteQueenMoves(pieceTypeBB[WQUEEN], allBB, whiteBB);
-		possible.insert(end(possible), begin(moves), end(moves));
+
 		moves = whiteKnightsMoves(pieceTypeBB[WKNIGHT], whiteBB);
-		possible.insert(end(possible), begin(moves), end(moves));*/
+		possible.insert(end(possible), begin(moves), end(moves));
+
+		moves = queenMoves(pieceTypeBB[WQUEEN], allBB, whiteBB);
+		possible.insert(end(possible), begin(moves), end(moves));
 	} else {
-		// TODO add black moves
 		moves = blackRooksMoves(pieceTypeBB[BROOK], allBB, blackBB);
 		possible.insert(end(possible), begin(moves), end(moves));
 
@@ -610,9 +1119,15 @@ MoveList BitBoard::getPseudoLegalMoves() {
 
 		moves = blackPawnMoves(*this, pieceTypeBB[BPAWN], occupied, whiteBB);
 		possible.insert(end(possible), begin(moves), end(moves));
-    	/*possible.addAll(Movement.blackBishopsMoves(pos.pieceTypeBB[Piece.BBISHOP], pos.allBB, pos.blackBB));
-    	possible.addAll(Movement.blackQueenMoves(pos.pieceTypeBB[Piece.BQUEEN], pos.allBB, pos.blackBB));
-    	possible.addAll(Movement.blackKnightsMoves(pos.pieceTypeBB[Piece.BKNIGHT], pos.blackBB));*/
+
+		moves = bishopsMoves(pieceTypeBB[BBISHOP], allBB, blackBB);
+		possible.insert(end(possible), begin(moves), end(moves));
+
+		moves = whiteKnightsMoves(pieceTypeBB[BKNIGHT], blackBB);
+		possible.insert(end(possible), begin(moves), end(moves));
+
+		moves = queenMoves(pieceTypeBB[BQUEEN], allBB, blackBB);
+		possible.insert(end(possible), begin(moves), end(moves));
 	}
 	//cout << "return pseudo legal" << endl;
 	return possible;
@@ -621,6 +1136,11 @@ MoveList BitBoard::getPseudoLegalMoves() {
 MoveList BitBoard::getPossibleMoves() {
 	MoveList possible = getPseudoLegalMoves();
 	//possible = removeIllegal(this, possible); // remove illegal moves (check situations)
+	//TODO test moves for debugging
+	for(Move m : possible) {
+		if(m.getSource8x8Index() > 63 || m.getSource8x8Index() < 0) cerr << "Illegal Move in possible Moves!";
+		if(m.getTarget8x8Index() > 63 || m.getTarget8x8Index() < 0) cerr << "Illegal Move in possible Moves!";
+	}
 	return possible;
 }
 
@@ -708,12 +1228,47 @@ int BitBoard::getEpSquare() {
 	return epSquare;
 }
 
+string BitBoard::str() {
+	updateBitBoards();
+	pieceTypeBB[0] = 0ULL; //TODO empty square bitboard is not up to date
+	convertBitBoardTo8x8Board(); // create 8x8 board
+	ostringstream result;
+	string boardstr(board);
+
+	/* Add newlines after each rank */
+	for(int j = 64 - 8; j >= 0; j -= 8) {
+		result << boardstr.substr(j, 8);
+		result << '\n';
+	}
+
+	return result.str();
+}
+
+std::ostream& operator<<(std::ostream &strm, const BitBoard &b) {
+	ostringstream result;
+	string boardstr(b.board);
+
+	/* Add newlines after each rank */
+	for(int j = 64 - 8; j >= 0; j -= 8) {
+		result << boardstr.substr(j, 8);
+		result << '\n';
+	}
+
+	cout << result.str() << endl;
+}
+
 bool BitBoard::makeMove(Move move, UndoInfo ui) {
+	//throw string("nicht vollständig implementiert");
 	ui.capturedPiece = squares[move.getTarget8x8Index()];
+	//cout << "capt. piece: " << ui.capturedPiece << endl;
+	if(ui.capturedPiece < 0 || ui.capturedPiece > 13) throw BitBoardError(*this, "invalid captured piece " + to_string(ui.capturedPiece) + " in BitBoard::makeMove()");
+		//throw string("invalid captured piece " + to_string(ui.capturedPiece));
 	ui.castleMask = castleMask;
+	//cout << "castleMask: " << castleMask << endl;
 	ui.epSquare = epSquare;
 	ui.halfMoveClock = halfMoveClock;
 	bool wtm = whiteMove;
+	//if(wtm) cout << "is white move" << endl;
 
 	const int p = squares[move.getSource8x8Index()];
 	int capP = squares[move.getTarget8x8Index()];
