@@ -71,7 +71,7 @@ int main() {
 
 	LookUpTables::init();
 	BitBoard::init();
-	BitBoard bitboard;
+	/*BitBoard bitboard;
 	cout << bitboard.developerInfo << endl;
 	bitboard.print();
 
@@ -90,10 +90,20 @@ int main() {
 	possible = bitboard.getPossibleMoves();
 	printPossibleMovesWithTime(possible);
 
+	// test queen moves
+	bitboard = BitBoard("3q1k2/p1pp1p2/8/1p6/4Q3/7P/1P1PP3/3K4 w KQkq -");
+	bitboard.print();
+	possible = bitboard.getPossibleMoves();
+	printPossibleMovesWithTime(possible);*/
+
 	cout << "create new bot" << endl;
+	try {
 	OnyxBot bot;
-	Move nextMove = bot.getNextMove();
-	cout << "next move: " << nextMove << ", score: " << bot.getNextMoveScore() << endl;
+		Move nextMove = bot.getNextMove();
+		cout << "next move: " << nextMove << ", score: " << bot.getNextMoveScore() << endl;
+	} catch (exception& e) {
+		cout << e.what() << '\n';
+	}
 
 	return 0;
 }
